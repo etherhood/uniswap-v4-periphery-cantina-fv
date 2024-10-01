@@ -88,4 +88,8 @@ contract V4RouterHarness is V4Router, ReentrancyLock {
     function msgSender() public view override returns (address) {
         return _getLocker();
     }
+
+    function getEtherBalance(address addr) external view returns (uint256) {
+        return addr.balance;
+    }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import { PositionManager, IPoolManager, IAllowanceTransfer } from "src/PositionManager.sol";
+import { PositionManager, IPoolManager, IAllowanceTransfer, PositionInfo } from "src/PositionManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PositionConfig} from "src/libraries/PositionConfig.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -19,11 +19,13 @@ contract PositionManagerHarness is PositionManager {
     // override multicall as its complex and just calls other functions in the scene, recommended to prove that a multicall is equivalent to executing two 
     function multicall(bytes[] calldata data) external payable override returns (bytes[] memory results) {}
 
+    // passed
     function settlePair(Currency currency0, Currency currency1) external {
         /// uint256 action = Actions.SETTLE_PAIR;
         _settlePair(currency0, currency1);
     }
 
+    // passed
     function takePair(Currency currency0, Currency currency1, address to) external {
         /// uint256 action = Actions.TAKE_PAIR;
         _takePair(currency0, currency1, to);
@@ -54,6 +56,7 @@ contract PositionManagerHarness is PositionManager {
         _sweep(currency, _mapRecipient(to));
     }
 
+    // passed
     function increaseLiquidity(
         uint256 tokenId,
         uint256 liquidity,
@@ -65,6 +68,7 @@ contract PositionManagerHarness is PositionManager {
         _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);               
     }
 
+    // passed
     function decreaseLiquidity(
         uint256 tokenId,
         uint256 liquidity,
@@ -76,6 +80,7 @@ contract PositionManagerHarness is PositionManager {
         _decrease(tokenId, liquidity, amount0Min, amount1Min, hookData);             
     }
 
+    // passed
     function mintPosition(
         PoolKey calldata poolKey,
         int24 tickLower,
@@ -90,6 +95,7 @@ contract PositionManagerHarness is PositionManager {
         _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);            
     }
 
+    // passed
     function burnPosition(
             uint256 tokenId,
             uint128 amount0Min,
@@ -100,4 +106,26 @@ contract PositionManagerHarness is PositionManager {
         // Will automatically decrease liquidity to 0 if the position is not already empty.
         _burn(tokenId, amount0Min, amount1Min, hookData);
     }
+
+    function getPoolKey(bytes32 poolId) external view returns (PoolKey memory) {
+        return poolKeys[bytes25(poolId)];
+    }
+
+    function getPositionKeyByTokenId(uint256 tokenId) external view returns (uint256) {
+        return PositionInfo.unwrap(positionInfo[tokenId]);
+    }
+
+    function getEtherBalance(address addr) external view returns (uint256) {
+        return addr.balance;
+    }
+
+    function getLockerSlotValue() external view returns (bytes32 value) {
+        
+        bytes32 addressSlot = 0x0aedd6bde10e3aa2adec092b02a3e3e805795516cda41f27aa145b8f300af87a;
+        
+        assembly {
+            value := tload(addressSlot)
+        }
+    }
+
 }

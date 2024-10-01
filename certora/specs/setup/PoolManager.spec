@@ -53,6 +53,8 @@ ghost mapping(bytes32 => uint160) poolSqrtPriceX96;
 ghost mapping(bytes32 => uint128) liquidityPerPool;
 /// The position liquidity for every (pool, position) pair.
 ghost mapping(bytes32 => mapping(bytes32 => uint128)) positionLiquidityPerPool; 
+/// Total pool calls
+ghost uint256 calls;
 
 
 function positionLiquidity(address manager, Conversions.PoolId poolId, bytes32 positionId) returns uint128 {
@@ -72,9 +74,12 @@ function swapMock(
     int256 amountSpecified,
     uint160 sqrtPriceLimitX96
 ) returns Conversions.BalanceDelta {
+
+    require key.currency0 < key.currency1;
+
     /// Calculate hashed pool and position IDs.
     bytes32 poolId = PoolKeyToId(key);
-    
+
     /// Declare random currency deltas for the caller and the provided pool hook address.
     int128 amount0_swapper;
     int128 amount1_swapper;
@@ -86,6 +91,14 @@ function swapMock(
     /// Restrict the amounts based on provided swap details
     swapAmountsConditions(poolId, zeroForOne, amountSpecified, amount0_principal, amount1_principal);
 
+    if(zeroForOne){
+        require amountSpecified > 0 => amount1_swapper <= amountSpecified && amount1_swapper >= 0;
+        require amountSpecified < 0 => amount0_swapper >= amountSpecified && amount0_swapper <= 0;
+    }else {
+        require amountSpecified > 0 => amount0_swapper <= amountSpecified && amount0_swapper >= 0;
+        require amountSpecified < 0 => amount1_swapper >= amountSpecified && amount1_swapper <= 0;
+    }
+
     /// Update the pool state post-swap
     updatePoolStateOnSwap(poolId, zeroForOne, sqrtPriceLimitX96, amount0_principal, amount1_principal);
 
@@ -95,6 +108,8 @@ function swapMock(
     /// Set currency delta for pool hook
     setCurrencyDelta(key.currency0, key.hooks, amount0_hook);
     setCurrencyDelta(key.currency1, key.hooks, amount1_hook);
+
+    calls = require_uint256(calls + 1);
 
     return amountsToBalanceDelta(amount0_swapper, amount1_swapper);
 }
@@ -109,6 +124,24 @@ function swapAmountsConditions(
 ) {
     // potential assumptions:
     /// direction of swapping: shouldn’t be getting both tokens and shouldn’t be giving both tokens
+
+    // This implies either pool ends up receiving both tokens or ends up giving both tokens
+    require x0_swap * x1_swap <= 0 && x0 != 0;
+
+    // Change of direction of swap by hook's delta is not allowed
+    // assuming the above condition
+    if (zeroForOne) {
+        // exactOut, tokenOut is token1
+        require x0 > 0 => x1_swap >= 0;
+        // exactIn, tokenIn is token0
+        require x0 < 0 => x0_swap <= 0;
+    }else{
+        // exactOut, tokenOut is token0
+        require x0 > 0 => x0_swap >= 0;
+        // exactIn, tokenIn is token1
+        require x0 < 0 => x1_swap <= 0;
+    }
+
 
     require true;
 }
@@ -136,6 +169,13 @@ function updatePoolStateOnSwap(
 
     havoc liquidityPerPool assuming forall bytes32 poolIdA.
         (poolIdA != poolId => liquidityPerPool@new[poolIdA] == liquidityPerPool@old[poolIdA]);
+    
+    if(zeroForOne){
+        require poolSqrtPriceX96[poolId] >= sqrtP_limit; 
+    }else{
+        require poolSqrtPriceX96[poolId] <= sqrtP_limit;
+    }
+
 }
 
 function modifyLiquidityMock(
@@ -207,8 +247,11 @@ function modifyLiquidityAmountsConditions(
     int128 x1_f,    /// The currency1 fee amount
     int256 dL       /// liquidity delta
 ) {
+    // Fee should always be positive
+    require x0_f >= 0 && x1_f >= 0;
+    require dL == 0 => x0_p == 0 && x1_p == 0;
     require dL > 0 => x0_p < 0 && x1_p < 0;
-    require dL < 0 => x0_p >= 0 && x1_p >= 0;
+    require dL < 0 => x0_p > 0 && x1_p > 0;
 }
 
 function settleMock(env e, address PoolManager, address recipient) returns uint256 {
@@ -216,6 +259,7 @@ function settleMock(env e, address PoolManager, address recipient) returns uint2
     if (_syncedCurrency == 0) {
         paid = e.msg.value;
     } else {
+        require e.msg.value == 0;
         paid = require_uint256(balanceOfCVL(_syncedCurrency, PoolManager) - _syncedReserves);
     }
     setCurrencyDelta(Conv.toCurrency(_syncedCurrency), recipient, require_int128(paid));
@@ -227,7 +271,7 @@ function settleMock(env e, address PoolManager, address recipient) returns uint2
 function takeMock(address PoolManager, Conversions.Currency currency, address caller, address to, uint256 amount) {
     require (caller != PoolManager); // The PoolManager cannot call itself.
     setCurrencyDelta(currency, caller, require_int128(-require_uint128(amount)));
-    transferCVL(Conv.fromCurrency(currency), PoolManager, to, amount);
+    require transferCVL(Conv.fromCurrency(currency), PoolManager, to, amount);
 }
 
 function syncMock(address PoolManager, Conversions.Currency currency) {
