@@ -99,11 +99,10 @@ rule increaseLiquidityNotifySubscriber(env e){
 
     require notifiedCounter == 0;
 
-    require Conv.hasSubscriber(info) == true;
-
     increaseLiquidity(e, tokenId, liquidity, amount0Max, amount1Max, hookData);
     
-    assert notifiedCounter == 1;
+    assert notifiedCounter == 0 => !Conv.hasSubscriber(info);
+    assert notifiedCounter == 1 => Conv.hasSubscriber(info);
 }
 
 // passing
